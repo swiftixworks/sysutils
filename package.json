@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "sysutils",
+  "version": "0.1.0",
+  "architecture": "svm64",
+  "minimumSwiftixVersion": "0.11.0",
+  "procfsSchemaVersion": 1,
+  "summary": "teaching-oriented system diagnostics",
+  "details": "Process, managed-runtime memory, descriptor, and completed-call diagnostics for Swiftix.",
+  "commands": [
+    "lsof",
+    "memstat",
+    "pstree",
+    "strace"
+  ]
+}
