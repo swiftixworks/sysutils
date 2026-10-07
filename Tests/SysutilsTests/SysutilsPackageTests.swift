@@ -11,7 +11,7 @@ struct SysutilsPackageTests {
         let archive = try loadArchive()
 
         #expect(archive.manifest.name == "sysutils")
-        #expect(archive.manifest.version.description == "0.1.0")
+        #expect(archive.manifest.version.description == packageVersion)
         #expect(archive.manifest.architecture == "svm64")
         let commandPaths = Set(commandNames.map { "/usr/bin/" + $0 })
         #expect(Set(archive.files.map(\.path)) == commandPaths.union([
@@ -22,6 +22,65 @@ struct SysutilsPackageTests {
             #expect(entry.mode == 0o755)
             #expect(GoExecutableImage.recognizes(archive.contents(of: entry)))
         }
+    }
+
+    @Test("package.json names the archive version, requirements, and commands")
+    func specificationMatchesArchive() throws {
+        struct Specification: Decodable {
+            let version: String
+            let minimumSwiftixVersion: String
+            let procfsSchemaVersion: Int
+            let commands: [String]
+        }
+        let specification = try JSONDecoder().decode(
+            Specification.self,
+            from: Data(contentsOf: repositoryRoot.appendingPathComponent("package.json")))
+        #expect(specification.version == packageVersion)
+        #expect(specification.minimumSwiftixVersion == "0.13.0")
+        #expect(specification.procfsSchemaVersion == Swiftix.teachingProcfsSchemaVersion)
+        #expect(specification.commands == commandNames)
+    }
+
+    @Test("invalid arguments print usage and an unknown process is reported")
+    func argumentErrors() throws {
+        let archive = try loadArchive()
+        let loop = EventLoop()
+        let kernel = Kernel(loop: loop, runtimeMemoryLimitBytes: 1_048_576)
+        install(archive, in: kernel, loop: loop)
+
+        let terminal = PseudoTerminal()
+        terminal.echo = false
+        var output: [UInt8] = []
+        terminal.onOutput = { [weak terminal] in
+            guard let terminal else { return }
+            output.append(contentsOf: terminal.readForApp(max: 65_535))
+        }
+        let commands = CommandRegistry.builtins
+        GoExecutableLoader.register(in: commands)
+        kernel.spawn("sh", Programs.shell(tty: terminal.slave, commands: commands))
+        loop.advance(by: 0)
+
+        func run(_ line: String) -> String {
+            output.removeAll()
+            terminal.writeFromApp(Array((line + "\n").utf8))
+            loop.advance(by: 0)
+            return String(decoding: output, as: UTF8.self)
+        }
+
+        // A pid is a nonempty run of ASCII digits: a sign, a letter, or a
+        // byte just outside "0"..."9" is refused before procfs is read.
+        for argument in ["abc", "12x", "-1", "1/", "1:", "''"] {
+            #expect(run("lsof \(argument)").contains("lsof: usage: lsof [pid]"))
+            #expect(run("strace \(argument)").contains("strace: usage: strace pid"))
+        }
+        #expect(run("lsof 1 2").contains("lsof: usage: lsof [pid]"))
+        #expect(run("strace").contains("strace: usage: strace pid"))
+        #expect(run("memstat extra").contains("memstat: usage: memstat"))
+        #expect(run("pstree extra").contains("pstree: usage: pstree"))
+
+        let missing = run("lsof 999999")
+        #expect(missing.contains("PID NAME FD TYPE ACCESS FLAGS OFFSET SIZE DETAIL"))
+        #expect(missing.contains("lsof: process not found"))
     }
 
     @Test("diagnostics consume the real versioned procfs surface")
@@ -78,6 +137,8 @@ struct SysutilsPackageTests {
         #expect(rendered.contains("worker(\(box.workerPID))"))
     }
 
+    private var packageVersion: String { "0.1.1" }
+
     private var commandNames: [String] {
         ["lsof", "memstat", "pstree", "strace"]
     }
@@ -97,13 +158,16 @@ struct SysutilsPackageTests {
         loop.runUntilIdle()
     }
 
+    private var repositoryRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
     private func loadArchive() throws -> PackageArchive {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let bytes = Array(try Data(contentsOf: root
-            .appendingPathComponent("Artifacts/sysutils_0.1.0.pkg")))
+        let bytes = Array(try Data(contentsOf: repositoryRoot
+            .appendingPathComponent("Artifacts/sysutils_\(packageVersion).pkg")))
         return try PackageArchive.decode(bytes)
     }
 }

@@ -2,16 +2,17 @@ package main
 
 import "fmt"
 import "os"
+import "swiftix/internal/common"
 
 func main() {
-	if len(os.Args) != 2 || !isDecimal(os.Args[1]) {
+	if len(os.Args) != 2 || !common.IsDecimal(os.Args[1]) {
 		fmt.Println("strace: usage: strace pid")
 		os.Exit(2)
 	}
-	if !requireProcSchema("strace") {
+	if !common.RequireProcSchema("strace") {
 		os.Exit(1)
 	}
-	trace, status := readGuestFile("strace", "/proc/"+os.Args[1]+"/syscalls")
+	trace, status := common.ReadGuestFile("strace", "/proc/"+os.Args[1]+"/syscalls")
 	if status != 0 {
 		os.Exit(status)
 	}

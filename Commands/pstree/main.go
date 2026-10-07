@@ -2,6 +2,7 @@ package main
 
 import "fmt"
 import "os"
+import "swiftix/internal/common"
 
 type processRow struct {
 	pid  string
@@ -27,19 +28,19 @@ func main() {
 		fmt.Println("pstree: usage: pstree")
 		os.Exit(2)
 	}
-	if !requireProcSchema("pstree") {
+	if !common.RequireProcSchema("pstree") {
 		os.Exit(1)
 	}
-	processes, status := readGuestFile("pstree", "/proc/processes")
+	processes, status := common.ReadGuestFile("pstree", "/proc/processes")
 	if status != 0 {
 		os.Exit(status)
 	}
 	rows := []processRow{}
-	lines := splitLines(processes)
+	lines := common.SplitLines(processes)
 	for index := 1; index < len(lines); index++ {
-		fields := splitFields(lines[index])
+		fields := common.SplitFields(lines[index])
 		if len(fields) >= 9 {
-			rows = append(rows, processRow{pid: fields[0], ppid: fields[1], name: joinFields(fields, 8)})
+			rows = append(rows, processRow{pid: fields[0], ppid: fields[1], name: common.JoinFields(fields, 8)})
 		}
 	}
 	for _, row := range rows {
